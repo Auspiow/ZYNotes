@@ -244,49 +244,60 @@ console.log("content.js 已注入");
     }
 
     const zip = new JSZip();
-    const folder = zip.folder("course_export");
+    const imgFolder = zip.folder("images");
 
     const courseTitle =
       document.querySelector(".title")?.textContent?.trim() ||
-      document.querySelector(".course_name")?.textContent?.trim() || "未知课程";
+      document.querySelector(".course_name")?.textContent?.trim() ||
+      "未知课程";
     const subTitle = document.querySelector(".sub")?.textContent?.trim() || "";
     const fullTitle = subTitle ? `${courseTitle}-${subTitle}` : courseTitle;
     const safeName = fullTitle.replace(/[\/\\:*?"<>|]/g, "_");
 
     const headerMd = `# ${fullTitle}\n\n> 导出时间：${new Date().toLocaleString("zh-CN")}\n\n`;
+
     const mdParts = new Array(result.length);
 
-    await Promise.all(result.map(async (page, i) => {
-      const time = page.current_time || "未知时间";
-      const imgUrl = page.img.replace(/^http:/, "https:");
+    await Promise.all(
+      result.map(async (page, i) => {
+        try {
+          const time = page.current_time || "未知时间";
+          const imgUrl = page.img?.replace(/^http:/, "https:");
+          const imgResp = await fetch(imgUrl);
+          const blob = await imgResp.blob();
+          const arrayBuffer = await blob.arrayBuffer();
 
-      const imgResp = await fetch(imgUrl);
-      const blob = await imgResp.blob();
-      const arrayBuffer = await blob.arrayBuffer();
-      const imgName = `page_${i + 1}.jpg`;
-      folder.file(imgName, arrayBuffer);
+          const imgName = `page_${String(i + 1).padStart(2, "0")}.jpg`;
+          imgFolder.file(imgName, arrayBuffer);
 
-      const text = (page.texts || []).join("\n").trim();
+          const text = (page.texts || []).join("\n").trim();
 
-      let part = `---\n\n## 🖼️ 第 ${i + 1} 页\n\n`;
-      part += `**时间：** ${time}\n\n`;
-      part += `![PPT ${i + 1}](./${imgName})\n\n`;
-      part += text ? `**讲述内容：**\n\n${text}\n\n` : `（暂无字幕）\n\n`;
+          let part = `---\n\n## 🖼️ 第 ${i + 1} 页\n\n`;
+          part += `**时间：** ${time}\n\n`;
+          part += `![第 ${i + 1} 页](images/${imgName})\n\n`;
+          part += text ? `**讲述内容：**\n\n${text}\n\n` : `（暂无字幕）\n\n`;
 
-      mdParts[i] = part;
-    }));
+          mdParts[i] = part;
+        } catch (err) {
+          mdParts[i] = `## 第 ${i + 1} 页\n\n⚠️ 加载失败：${err.message}\n\n`;
+        }
+      })
+    );
 
-    const md = headerMd + mdParts.join("");
-    folder.file(`${safeName}.md`, md);
+    const finalMd = headerMd + mdParts.join("");
+    zip.file(`${safeName}.md`, finalMd); // .md 在根目录
+
     const zipBlob = await zip.generateAsync({ type: "blob" });
-
     const a = document.createElement("a");
     a.href = URL.createObjectURL(zipBlob);
     a.download = `${safeName}.zip`;
     a.click();
 
-    console.log(`✅ Markdown+图片 ZIP 导出完成：${safeName}.zip`);
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+
+    console.log(`✅ Markdown + 图片 ZIP 导出完成：${safeName}.zip`);
   }
+
 
   async function tryFetchSearchPptOnce() {
     const courseId = getClassID("course_id");
