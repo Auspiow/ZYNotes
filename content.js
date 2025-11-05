@@ -119,7 +119,6 @@ console.log("content.js 已注入");
     let t = String(text).trim();
 
     t = t.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
-
     if (/^[\s\p{P}\p{S}]+$/u.test(t)) return "";
 
     const fillers = [
@@ -150,24 +149,39 @@ console.log("content.js 已注入");
       t = t.replace(new RegExp(wrong, "gi"), right);
     }
 
-    t = t.replace(/([好对是行有没要看说])\1{1,}/g, "$1");
-    t = t.replace(/([啊哦嗯呃哈欸呀])\1{1,}/g, "$1");
-
-    t = t.replace(/[，,]{2,}/g, "，")
-        .replace(/[。\.]{2,}/g, "。")
-        .replace(/[！!]{2,}/g, "！")
-        .replace(/[？\?]{2,}/g, "？")
-        .replace(/\s+/g, " ")
-        .trim();
+    t = t
+      .replace(/([好对是行有没要看说])\1{1,}/g, "$1")
+      .replace(/([啊哦嗯呃哈欸呀])\1{1,}/g, "$1")
+      .replace(/[，,]{2,}/g, "，")
+      .replace(/[。\.]{2,}/g, "。")
+      .replace(/[！!]{2,}/g, "！")
+      .replace(/[？\?]{2,}/g, "？")
+      .replace(/\s+/g, " ")
+      .trim();
 
     if (/^[\s0-9０-９\.,，。]+$/.test(t)) return "";
-    if (/^[\s0-9０-９]+[^\w\u4e00-\u9fff]*([嗯啊呃哦唉哈欸])+[^\w\u4e00-\u9fff]*$/i.test(t)) {
-      return "";
+
+    const chineseCount = (t.match(/[\u4e00-\u9fa5]/g) || []).length;
+    const englishCount = (t.match(/[A-Za-z]/g) || []).length;
+    const total = chineseCount + englishCount;
+
+    if (total > 0) {
+      const chineseRatio = chineseCount / total;
+      const englishRatio = englishCount / total;
+
+      if (chineseRatio > 0.95) {
+        t = t.replace(/[A-Za-z0-9@#%&_\-+=\/\\]+/g, "").trim();
+      }
+      else if (englishRatio > 0.95) {
+        t = t.replace(/[\u4e00-\u9fa5]/g, "").trim();
+      }
+      else if (Math.abs(chineseRatio - englishRatio) < 0.3) {
+        if (t.length < 10) return "";
+      }
     }
 
     const plain = t.replace(/^[\u2000-\u206F\u2E00-\u2E7F\p{P}\p{S}\s]+|[\u2000-\u206F\u2E00-\u2E7F\p{P}\p{S}\s]+$/gu,"").trim();
     if ([...plain].length <= 1) return "";
-
     if (/^[\u4e00-\u9fff]([。\.，,]?){0,1}$/.test(t)) return "";
 
     if (!/[。！？!?]$/.test(t)) {
@@ -175,12 +189,10 @@ console.log("content.js 已注入");
     }
 
     t = t.replace(/\s+/g, " ").trim();
-
     if (t.length <= 2) return "";
 
     return t;
   }
-
 
   async function makePdf(result) {
     const pdf = new jsPDF({ unit: "px", format: "a4" });
