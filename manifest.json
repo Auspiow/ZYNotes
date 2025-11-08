@@ -31,6 +31,7 @@
       "resources": [
         "libs/jspdf.min.js",
         "libs/jszip.min.js",
+        "libs/pdfobject.min.js",
         "assets/simhei.txt"
       ],
       "matches": [
