@@ -215,7 +215,7 @@ console.log("content.js 已注入");
       canvas.height = img.height;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
-      const imgData = canvas.toDataURL("images/jpeg");
+      const imgData = canvas.toDataURL("image/jpeg");
       pdf.addImage(imgData, "JPEG", 20, 40, 400, 225);
 
       pdf.setFontSize(10);
@@ -297,7 +297,7 @@ console.log("content.js 已注入");
     );
 
     const finalMd = headerMd + mdParts.join("");
-    zip.file(`${safeName}.md`, finalMd);
+    zip.file(`${safeName}.md`, finalMd); // .md 在根目录
 
     const zipBlob = await zip.generateAsync({ type: "blob" });
     const a = document.createElement("a");
@@ -419,7 +419,6 @@ console.log("content.js 已注入");
       console.error("❌ 请求 search-ppt 失败:", err);
     }
   }
-
   console.log("🎉 智云课堂 search-ppt 工具已注入，可等待 popup 触发");
 
   window.startZhiyunExport = async function (type = "pdf") {

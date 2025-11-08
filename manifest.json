@@ -1,21 +1,29 @@
 {
   "manifest_version": 3,
-  "name": "智云课堂笔记助手",
-  "version": "2.4",
+  "name": "智云课堂导出助手",
+  "version": "2.3",
   "description": "自动将智云课堂的PPT与讲解字幕结合导出为PDF或Markdown（支持离线查看）",
-  "permissions": ["activeTab"],
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "tabs",
+    "storage"
+  ],
   "host_permissions": [
     "https://interactivemeta.cmc.zju.edu.cn/*",
     "https://classroom.zju.edu.cn/*",
     "https://yjapi.cmc.zju.edu.cn/*"
   ],
+
   "background": {
     "service_worker": "background.js"
   },
+
   "action": {
     "default_popup": "popup.html",
     "default_title": "智云课堂导出助手"
   },
+
   "content_scripts": [
     {
       "matches": [
@@ -23,15 +31,15 @@
         "*://classroom.zju.edu.cn/*"
       ],
       "js": ["content.js"],
-      "run_at": "document_start"
+      "run_at": "document_idle"
     }
   ],
+
   "web_accessible_resources": [
     {
       "resources": [
         "libs/jspdf.min.js",
         "libs/jszip.min.js",
-        "libs/pdfobject.min.js",
         "assets/simhei.txt"
       ],
       "matches": [
@@ -40,6 +48,7 @@
       ]
     }
   ],
+
   "icons": {
     "16": "icons/16.png",
     "48": "icons/48.png",
