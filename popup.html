@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <title>智云课堂导出助手 · Auspiow</title>
   <style>
     body {
@@ -10,6 +10,7 @@
       padding: 16px;
       background: linear-gradient(145deg, #f0f4ff, #ffffff);
       color: #222;
+      user-select: none;
     }
 
     h3 {
@@ -70,6 +71,13 @@
     footer a:hover {
       text-decoration: underline;
     }
+
+    #status {
+      margin-top: 10px;
+      text-align: center;
+      font-size: 12px;
+      color: #555;
+    }
   </style>
 </head>
 <body>
@@ -90,12 +98,12 @@
     导出课程为 Markdown
   </button>
 
+  <div id="status">等待操作中...</div>
+
   <footer>
     Made by <a href="https://github.com/Auspiow" target="_blank">Auspiow</a>
   </footer>
 
-  <script src="libs/jspdf.min.js"></script>
-  <script src="libs/jszip.min.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

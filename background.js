@@ -1,47 +1,55 @@
-console.log("✅ background.js 已启动");
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "fetchProxy") {
-    console.log("🌐 接收到 fetchProxy 请求:", message.url);
+console.log("🔧 background.js 启动");
 
-    fetch(message.url, {
-      method: "GET",
-      credentials: "include",
-    })
-      .then(async (res) => {
-        const text = await res.text();
-        let jsonData = null;
-        try {
-          jsonData = JSON.parse(text);
-        } catch {
-          jsonData = text;
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || !msg.action) return;
+
+  // fetch 代理：在 service worker 中执行真正的 fetch（不受网页 CORS 限制）
+  if (msg.action === "fetchProxyRequest" && msg.url) {
+    (async () => {
+      try {
+        // 请根据需要调整 fetch 参数（method / headers / body 等）
+        const res = await fetch(msg.url, {
+          method: msg.method || "GET",
+          credentials: "include", // 保持带 cookie
+          headers: msg.headers || {},
+          body: msg.body || undefined,
+        });
+
+        const contentType = res.headers.get("content-type") || "";
+        let body;
+        if (contentType.includes("application/json")) {
+          body = await res.json();
+        } else {
+          // 返回文本（JSON 也会被当成文本 fallback）
+          body = await res.text();
         }
 
+        // 返回结构：与 content.js / inject.js 预期兼容
         sendResponse({
-          ok: res.ok,
+          ok: true,
           status: res.status,
-          json: jsonData,
+          statusText: res.statusText,
+          json: body,
         });
-      })
-      .catch((err) => {
-        console.error("❌ background.js 请求失败:", err);
+      } catch (err) {
+        console.error("background.fetchProxyRequest failed:", err);
         sendResponse({
           ok: false,
-          error: err.message || String(err),
-        });
-      });
-    return true;
-  }
-  if (message.action === "startZhiyunExport") {
-    console.log("📥 收到 popup 导出指令");
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs.length > 0) {
-        chrome.scripting.executeScript({
-          target: { tabId: tabs[0].id },
-          func: () => window.startZhiyunExport && window.startZhiyunExport(),
+          error: err && err.message ? err.message : String(err),
         });
       }
-    });
-    sendResponse({ ok: true });
+    })();
+
+    // 表示我们将异步调用 sendResponse
     return true;
+  }
+
+  // 通知处理：页面导出完成，或其它通知消息（可自由扩展）
+  if (msg.action === "notifyDone") {
+    console.log("🔔 导出完成通知（来自 content/inject）：", msg.info);
+    // 你可以在这里显示 Chrome Notification（需要 notifications 权限），或记录 telemetry。
+    // 例如：chrome.notifications.create(...)
+    sendResponse({ ok: true });
+    return;
   }
 });
