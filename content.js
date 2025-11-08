@@ -15,7 +15,7 @@ console.log("content.js 已注入");
   if (typeof window.jsPDF === "undefined" && typeof window.jspdf === "undefined") {
     await new Promise((resolve, reject) => {
       const script = document.createElement("script");
-      script.src = chrome.runtime.getURL("jspdf.min.js");
+      script.src = chrome.runtime.getURL("libs/jspdf.min.js");
       script.onload = resolve;
       script.onerror = reject;
       document.head.appendChild(script);
@@ -105,7 +105,7 @@ console.log("content.js 已注入");
   let fontLoaded = false;
   async function loadChineseFont(pdf) {
     if (fontLoaded) return "SimHei";
-    const fontUrl = chrome.runtime.getURL("simhei.txt");
+    const fontUrl = chrome.runtime.getURL("assets/simhei.txt");
     const base64 = await fetch(fontUrl).then(res => res.text());
     pdf.addFileToVFS("simhei.ttf", base64);
     pdf.addFont("simhei.ttf", "SimHei", "normal");
@@ -215,7 +215,7 @@ console.log("content.js 已注入");
       canvas.height = img.height;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
-      const imgData = canvas.toDataURL("image/jpeg");
+      const imgData = canvas.toDataURL("images/jpeg");
       pdf.addImage(imgData, "JPEG", 20, 40, 400, 225);
 
       pdf.setFontSize(10);
@@ -247,7 +247,7 @@ console.log("content.js 已注入");
     if (typeof window.JSZip === "undefined") {
       await new Promise((resolve, reject) => {
         const script = document.createElement("script");
-        script.src = chrome.runtime.getURL("jszip.min.js");
+        script.src = chrome.runtime.getURL("libs/jszip.min.js");
         script.onload = resolve;
         script.onerror = reject;
         document.head.appendChild(script);
@@ -297,7 +297,7 @@ console.log("content.js 已注入");
     );
 
     const finalMd = headerMd + mdParts.join("");
-    zip.file(`${safeName}.md`, finalMd); // .md 在根目录
+    zip.file(`${safeName}.md`, finalMd);
 
     const zipBlob = await zip.generateAsync({ type: "blob" });
     const a = document.createElement("a");
@@ -419,8 +419,6 @@ console.log("content.js 已注入");
       console.error("❌ 请求 search-ppt 失败:", err);
     }
   }
-
-
 
   console.log("🎉 智云课堂 search-ppt 工具已注入，可等待 popup 触发");
 
