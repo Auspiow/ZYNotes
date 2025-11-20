@@ -62,7 +62,6 @@
   async function TryUrl(urls) {
     for (const url of urls) {
       try {
-        // 使用 content -> background 代理 fetch
         const resp = await proxyFetch(url);
         if (resp && resp.ok) {
           console.log(`✅ 成功使用接口: ${url}`);
@@ -122,8 +121,14 @@
     try {
       const base64 = await getFontBase64(); // 从 content script 获取
       if (!base64) throw new Error("font base64 empty");
+      // 将字体写入 vFS 并以 Identity-H 编码注册，确保支持 Unicode
       pdf.addFileToVFS("simhei.ttf", base64);
-      pdf.addFont("simhei.ttf", "SimHei", "normal");
+      try {
+        pdf.addFont("simhei.ttf", "SimHei", "normal", "Identity-H");
+      } catch (e) {
+        console.warn("addFont 调用失败，尝试不带 encoding：", e);
+        pdf.addFont("simhei.ttf", "SimHei", "normal");
+      }
       fontLoaded = true;
       return "SimHei";
     } catch (e) {
@@ -214,9 +219,14 @@
   }
 
   async function makePdf(result) {
-    const pdf = new jsPDF({ unit: "px", format: "a4" });
+    const JsPDFCtor = window.jsPDF || (window.jspdf && window.jspdf.jsPDF);
+    if (!JsPDFCtor) {
+      throw new Error("jsPDF 未加载，请确保已注入 libs/jspdf.min.js");
+    }
+
+    const pdf = new JsPDFCtor({ unit: "px", format: "a4" });
     const fontName = await loadChineseFont(pdf);
-    pdf.setFont(fontName);
+    pdf.setFont(fontName, "normal");
 
     for (let i = 0; i < result.length; i++) {
       if (i > 0) pdf.addPage();
@@ -225,21 +235,27 @@
       const imgUrl = page.img.replace(/^http:/, "https:");
       const img = await loadImage(imgUrl);
 
-      pdf.setFontSize(12);
-      const header = `Page ${i + 1} (${page.current_time})`;
-      pdf.text(header, 20, 20);
+      pdf.setTextColor(0, 0, 0);
 
+      // 页眉
+      pdf.setFontSize(12);
+      pdf.text(`Page ${i + 1} (${page.current_time})`, 20, 20);
+
+      // PPT 图片
       const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
+
       const imgData = canvas.toDataURL("image/jpeg");
       pdf.addImage(imgData, "JPEG", 20, 40, 400, 225);
 
+      // 文本内容
       pdf.setFontSize(10);
       const text = (page.texts || []).join("\n") || "（暂无文字）";
       const lines = pdf.splitTextToSize(text, 400);
+
       let y = 280;
       for (const line of lines) {
         if (y > 570) {
@@ -250,20 +266,26 @@
         y += 12;
       }
 
+      // 页脚页码
       pdf.setFontSize(9);
       pdf.text(`Page ${i + 1} / ${result.length}`, 400, 560);
     }
+
+    // 文件名
     const courseTitle =
       document.querySelector(".title")?.textContent?.trim() ||
-      document.querySelector(".course_name")?.textContent?.trim() || "未知课程";
-    const subTitle = document.querySelector(".sub")?.textContent?.trim() || "";
+      document.querySelector(".course_name")?.textContent?.trim() ||
+      "未知课程";
+    const subTitle =
+      document.querySelector(".sub")?.textContent?.trim() || "";
     const fullTitle = subTitle ? `${courseTitle}-${subTitle}` : courseTitle;
     const safeName = `${fullTitle}.pdf`.replace(/[\/\\:*?"<>|]/g, "_");
+
+    // 保存文件
     pdf.save(safeName);
   }
 
   async function makeMarkdown(result) {
-    // 在页面中，JSZip 可能已经被 content.js 注入（content.js 应先注入 libs）
     if (typeof window.JSZip === "undefined") {
       throw new Error("JSZip 未加载，请确保 content.js 先注入 libs/jszip.min.js");
     }
@@ -369,13 +391,14 @@
 
       console.log("拿到 ppt 页数", pptList.length);
 
-      const { data: transDataRaw } = await TryUrl(transUrls);
+      const {data: transRaw} = await TryUrl(transUrls);
       const transData = [];
+      const transDataRaw = JSON.parse(transRaw);
 
-      for (const transItem of transDataRaw.list || []) {
+      for (const transItem of transDataRaw.list) {
         const allContent = transItem.all_content || [];
         for (const content of allContent) {
-          const cleaned = cleanText(content.Text);
+          const cleaned = cleanText(content.Text, "mild");
           if (cleaned) {
             transData.push({
               time: content.BeginSec,
@@ -461,7 +484,6 @@
     }
   };
 
-  // 接收来自 content script 的消息（一般不需要，但保留）
   window.addEventListener("message", (ev) => {
     if (ev.data?.__zhiyun_event === "call-start") {
       window.startZhiyunExport(ev.data.type);
