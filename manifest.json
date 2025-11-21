@@ -4,7 +4,6 @@
   "version": "3.0",
   "description": "将智云课堂的PPT与讲解字幕结合导出为PDF或Markdown",
   "permissions": [
-    "scripting",
     "activeTab"
   ],
   "host_permissions": [
