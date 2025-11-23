@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ZYNotes",
-  "version": "3.0",
+  "version": "3.0.1",
   "description": "将智云课堂的PPT与讲解字幕结合导出为PDF或Markdown",
   "permissions": [
     "activeTab"
