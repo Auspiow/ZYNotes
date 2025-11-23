@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "智云课堂笔记助手",
+  "name": "ZYNotes",
   "version": "3.0",
   "description": "将智云课堂的PPT与讲解字幕结合导出为PDF或Markdown",
   "permissions": [
@@ -18,7 +18,7 @@
 
   "action": {
     "default_popup": "popup.html",
-    "default_title": "智云课堂导出助手"
+    "default_title": "ZYNotes"
   },
 
   "content_scripts": [
