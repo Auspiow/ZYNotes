@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "ZYNotes",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "将智云课堂的PPT与讲解字幕结合导出为PDF或Markdown",
   "permissions": [
     "activeTab"
   ],
+
   "host_permissions": [
-    "https://interactivemeta.cmc.zju.edu.cn/*",
+    "https://*.cmc.zju.edu.cn/*",
     "https://classroom.zju.edu.cn/*",
     "https://yjapi.cmc.zju.edu.cn/*"
   ],
@@ -24,7 +25,7 @@
   "content_scripts": [
     {
       "matches": [
-        "*://interactivemeta.cmc.zju.edu.cn/*",
+        "*://*.cmc.zju.edu.cn/*",
         "*://classroom.zju.edu.cn/*"
       ],
       "js": ["content.js"],
@@ -41,7 +42,7 @@
         "assets/simhei.txt"
       ],
       "matches": [
-        "*://interactivemeta.cmc.zju.edu.cn/*",
+        "*://*.cmc.zju.edu.cn/*",
         "*://classroom.zju.edu.cn/*"
       ]
     }

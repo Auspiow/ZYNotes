@@ -2,7 +2,7 @@
   if (window.__zhiyunInPage) return;
   window.__zhiyunInPage = true;
 
-  console.log("📄 inject.js 已在页面主世界运行 (改写版)");
+  console.log("📄 inject.js 已在页面主世界运行 (补丁版)");
 
   function genId() { return Math.random().toString(36).slice(2); }
   function sendToContent(msg) { window.postMessage(msg, '*'); }
@@ -29,7 +29,6 @@
     const reqId = genId();
     sendToContent({ __zhiyun_event: 'fetchProxy', url, reqId });
     const respMsg = await awaitResponse('fetchProxyResponse', reqId);
-    // background.js 返回 { ok, json } 或 { ok:false, error }
     return respMsg.resp;
   }
 
@@ -40,8 +39,6 @@
     if (respMsg.error) throw new Error(respMsg.error);
     return respMsg.base64;
   }
-
-  // ===== 原函数===== //
 
   function getClassID(name, url = location.href) {
     try {
@@ -76,39 +73,67 @@
     throw new Error("两个接口都请求失败");
   }
 
-  function loadImage(url) {
+  async function loadImage(url, retry = 2) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
+
       img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = url;
+      img.onerror = async () => {
+        if (retry > 0) {
+          console.warn("图片加载失败，重试：", url);
+          await new Promise(r => setTimeout(r, 300));
+          resolve(loadImage(url, retry - 1));
+        } else {
+          reject(new Error("图片加载失败：" + url));
+        }
+      };
+
+      img.src = url + (url.includes("?") ? "&" : "?") + "t=" + Date.now();
     });
   }
 
+
   async function isSameImage(url1, url2, threshold = 0.9) {
     try {
-      const [img1, img2] = await Promise.all([loadImage(url1), loadImage(url2)]);
+      const [img1, img2] = await Promise.all([
+        loadImage(url1),
+        loadImage(url2)
+      ]);
+
       const size = 32;
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+
+      const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
+      // ----- 获取第一张缩略图 -----
+      ctx.clearRect(0, 0, size, size);
       ctx.drawImage(img1, 0, 0, size, size);
       const data1 = ctx.getImageData(0, 0, size, size).data;
+
+      // ----- 获取第二张缩略图 -----
+      ctx.clearRect(0, 0, size, size);
       ctx.drawImage(img2, 0, 0, size, size);
       const data2 = ctx.getImageData(0, 0, size, size).data;
 
+      // ----- 比对像素 -----
       let same = 0;
+      const total = data1.length / 4;
+
       for (let i = 0; i < data1.length; i += 4) {
-        const diff = Math.abs(data1[i] - data2[i])
-          + Math.abs(data1[i + 1] - data2[i + 1])
-          + Math.abs(data1[i + 2] - data2[i + 2]);
+        const diff =
+          Math.abs(data1[i] - data2[i]) +
+          Math.abs(data1[i + 1] - data2[i + 1]) +
+          Math.abs(data1[i + 2] - data2[i + 2]);
+
         if (diff < 30) same++;
       }
-      const similarity = same / (data1.length / 4);
-      return similarity > threshold;
+
+      const similarity = same / total;
+      return similarity >= threshold;
+
     } catch (e) {
       console.warn("图片比对失败：", e);
       return false;
@@ -119,27 +144,27 @@
   async function loadChineseFont(pdf) {
     if (fontLoaded) return "SimHei";
     try {
-      const base64 = await getFontBase64(); // 从 content script 获取
+      const base64 = await getFontBase64();
       if (!base64) throw new Error("font base64 empty");
-      // 将字体写入 vFS 并以 Identity-H 编码注册，确保支持 Unicode
+
       pdf.addFileToVFS("simhei.ttf", base64);
+
       try {
         pdf.addFont("simhei.ttf", "SimHei", "normal", "Identity-H");
       } catch (e) {
-        console.warn("addFont 调用失败，尝试不带 encoding：", e);
         pdf.addFont("simhei.ttf", "SimHei", "normal");
       }
+
       fontLoaded = true;
       return "SimHei";
     } catch (e) {
       console.warn("加载字体失败，使用默认字体：", e);
-      return "Times"; // 回退
+      return "Times";
     }
   }
 
   function cleanText(text, mode = "mild") {
     if (!text) return "";
-
     let t = String(text).trim();
 
     t = t.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
@@ -218,6 +243,40 @@
     return t;
   }
 
+  function loadImageWithTimeout(url, timeout = 8000) {
+    return new Promise((resolve, reject) => {
+      let timedOut = false;
+      const t = setTimeout(() => {
+        timedOut = true;
+        reject(new Error("timeout loading image: " + url));
+      }, timeout);
+
+      loadImage(url).then(img => {
+        if (!timedOut) {
+          clearTimeout(t);
+          resolve(img);
+        }
+      }).catch(err => {
+        if (!timedOut) {
+          clearTimeout(t);
+          reject(err);
+        }
+      });
+    });
+  }
+
+  async function checkImage(url, retries = 2, timeout = 5000) {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const img = await loadImageWithTimeout(url, timeout);
+        if (img && img.width > 0 && img.height > 0) return true;
+      } catch (e) {
+        // continue retry
+      }
+    }
+    return false;
+  }
+
   async function makePdf(result) {
     const JsPDFCtor = window.jsPDF || (window.jspdf && window.jspdf.jsPDF);
     if (!JsPDFCtor) {
@@ -232,24 +291,77 @@
       if (i > 0) pdf.addPage();
 
       const page = result[i];
-      const imgUrl = page.img.replace(/^http:/, "https:");
-      const img = await loadImage(imgUrl);
+      const imgUrl = (page.img || "").replace(/^http:/, "https:");
+      let img = null;
 
-      pdf.setTextColor(0, 0, 0);
+      // 先快速检测图片是否可用，避免长时间等待单张超时
+      try {
+        const ok = await checkImage(imgUrl, 1, 6000);
+        if (ok) {
+          try {
+            img = await loadImageWithTimeout(imgUrl, 8000);
+          } catch (e) {
+            console.error("❌ loadImageWithTimeout 失败：", imgUrl, e);
+            img = null;
+          }
+        } else {
+          console.warn("⚠️ checkImage 判定不可用，跳过图片：", imgUrl);
+        }
+      } catch (e) {
+        console.warn("⚠️ 图片检测异常：", imgUrl, e);
+      }
 
       // 页眉
+      pdf.setTextColor(0, 0, 0);
       pdf.setFontSize(12);
-      pdf.text(`Page ${i + 1} (${page.current_time})`, 20, 20);
+      pdf.text(`Page ${i + 1} (${page.current_time || "未知时间"})`, 20, 20);
 
-      // PPT 图片
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
+      // PPT 图片或占位
+      if (img) {
+        try {
+          // ==== 高清 Canvas（DPR 修复模糊） ====
+          const dpr = window.devicePixelRatio || 1;
 
-      const imgData = canvas.toDataURL("image/jpeg");
-      pdf.addImage(imgData, "JPEG", 20, 40, 400, 225);
+          // 原图 → 高清 canvas
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width * dpr;
+          canvas.height = img.height * dpr;
+          canvas.style.width = img.width + "px";
+          canvas.style.height = img.height + "px";
+
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          ctx.scale(dpr, dpr);
+          ctx.drawImage(img, 0, 0, img.width, img.height);
+
+          // 按你的逻辑进行缩放（但保持高清）
+          const targetW = 400;
+          const aspect = img.width / img.height;
+          const targetH = Math.round(targetW / aspect);
+
+          const tmpCanvas = document.createElement("canvas");
+          tmpCanvas.width = targetW * dpr;
+          tmpCanvas.height = targetH * dpr;
+          tmpCanvas.style.width = targetW + "px";
+          tmpCanvas.style.height = targetH + "px";
+
+          const tctx = tmpCanvas.getContext("2d", { willReadFrequently: true });
+          tctx.scale(dpr, dpr);
+          tctx.drawImage(canvas, 0, 0, targetW, targetH);
+
+          const imgData = tmpCanvas.toDataURL("image/jpeg", 0.92);
+
+          // === 写入 PDF ===
+          pdf.addImage(imgData, "JPEG", 20, 40, targetW, targetH);
+
+        } catch (e) {
+          console.error("❌ 将图片写入 PDF 失败：", imgUrl, e);
+          pdf.setFontSize(12);
+          pdf.text("【PPT 图片加载失败 — 已跳过】", 20, 80);
+        }
+      } else {
+        pdf.setFontSize(12);
+        pdf.text("【PPT 图片加载失败或不存在】", 20, 80);
+      }
 
       // 文本内容
       pdf.setFontSize(10);
@@ -281,7 +393,6 @@
     const fullTitle = subTitle ? `${courseTitle}-${subTitle}` : courseTitle;
     const safeName = `${fullTitle}.pdf`.replace(/[\/\\:*?"<>|]/g, "_");
 
-    // 保存文件
     pdf.save(safeName);
   }
 
@@ -309,19 +420,39 @@
       result.map(async (page, i) => {
         try {
           const time = page.current_time || "未知时间";
-          const imgUrl = page.img?.replace(/^http:/, "https:");
-          const imgResp = await fetch(imgUrl);
-          const blob = await imgResp.blob();
-          const arrayBuffer = await blob.arrayBuffer();
+          const imgUrl = (page.img || "").replace(/^http:/, "https:");
+          let imgName = `page_${String(i + 1).padStart(2, "0")}.jpg`;
+          let haveImage = false;
 
-          const imgName = `page_${String(i + 1).padStart(2, "0")}.jpg`;
-          imgFolder.file(imgName, arrayBuffer);
+          try {
+            const ok = await checkImage(imgUrl, 1, 6000);
+            if (ok) {
+              // fetch 图片二进制（使用浏览器 fetch，这里无需代理，因为同域或允许跨域数据URI）
+              const resp = await fetch(imgUrl);
+              if (resp.ok) {
+                const blob = await resp.blob();
+                const arrayBuffer = await blob.arrayBuffer();
+                imgFolder.file(imgName, arrayBuffer);
+                haveImage = true;
+              } else {
+                console.warn("⚠️ fetch 图片返回非 ok：", imgUrl, resp.status);
+              }
+            } else {
+              console.warn("⚠️ checkImage 判定图片不可用：", imgUrl);
+            }
+          } catch (err) {
+            console.warn("⚠️ 下载图片失败，已跳过：", imgUrl, err);
+          }
 
           const text = (page.texts || []).join("\n").trim();
 
           let part = `---\n\n## 🖼️ 第 ${i + 1} 页\n\n`;
           part += `**时间：** ${time}\n\n`;
-          part += `![第 ${i + 1} 页](images/${imgName})\n\n`;
+          if (haveImage) {
+            part += `![第 ${i + 1} 页](images/${imgName})\n\n`;
+          } else {
+            part += `**图片：** （加载失败或不存在）\n\n`;
+          }
           part += text ? `**讲述内容：**\n\n${text}\n\n` : `（暂无字幕）\n\n`;
 
           mdParts[i] = part;
@@ -332,7 +463,7 @@
     );
 
     const finalMd = headerMd + mdParts.join("");
-    zip.file(`${safeName}.md`, finalMd); // .md 在根目录
+    zip.file(`${safeName}.md`, finalMd);
 
     const zipBlob = await zip.generateAsync({ type: "blob" });
     const a = document.createElement("a");
@@ -429,7 +560,9 @@
         try {
           const same = await isSameImage(lastUrl, currentUrl);
           if (same) continue;
-        } catch (e) {}
+        } catch (e) {
+          // 忽略比对失败，直接保留 current
+        }
 
         mergedPpt.push({ img: slide.img, time: slide.time, current_time: slide.current_time });
       }
@@ -453,18 +586,18 @@
 
     } catch (err) {
       console.error("❌ 请求 search-ppt 失败:", err);
+      throw err;
     }
   }
 
-  console.log("🎉 智云课堂 search-ppt 工具已注入，可等待 popup 触发");
+  console.log("🎉 智云课堂 search-ppt 工具（补丁版）已注入，可等待 popup 触发");
 
   window.startZhiyunExport = async function (type = "pdf") {
     console.log(`📥 收到 popup 调用，开始生成 ${type.toUpperCase()}...`);
-
     try {
       const result = await tryFetchSearchPptOnce();
 
-      if (!result || !Array.isArray(result)) {
+      if (!result || !Array.isArray(result) || result.length === 0) {
         alert("❌ 导出失败：未能获取课程数据");
         return;
       }
@@ -480,7 +613,7 @@
       console.log(`✅ ${type.toUpperCase()} 导出完成`);
     } catch (err) {
       console.error("❌ 导出失败：", err);
-      alert("❌ 导出失败，请检查控制台日志。");
+      alert("❌ 导出失败，请检查控制台（Console）以获取详细信息。");
     }
   };
 
@@ -490,5 +623,5 @@
     }
   });
 
-  console.log("✅ 页面主世界中定义了 window.startZhiyunExport()");
+  console.log("✅ 页面主世界中定义了 window.startZhiyunExport()（补丁版）");
 })();
